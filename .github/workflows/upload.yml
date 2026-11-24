@@ -1,21 +1,31 @@
 name: Upload Short
-
 on:
-  workflow_dispatch:
   schedule:
     - cron: '0 15 * * *'
-
+  workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r requirements.txt
       - run: python main.py
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      - name: Commit and push state
+        run: |
+          git config --global user.email "bot@example.com"
+          git config --global user.name "bot"
+          git add state.json || true
+          git commit -m "Update state" || true
+          git push || true
