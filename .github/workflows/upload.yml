@@ -1,4 +1,4 @@
-name: Upload Short
+name: Upload Long Videos 
 on:
   schedule:
     - cron: '0 15 * * *'
