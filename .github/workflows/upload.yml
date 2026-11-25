@@ -1,9 +1,8 @@
-name: Upload Long Videos 
+name: Upload Long Videos
 on:
   schedule:
     - cron: '0 15 * * *'
     - cron: '30 15 * * *'
-    - cron: '0 16 * * *'
   workflow_dispatch:
 permissions:
   contents: write
