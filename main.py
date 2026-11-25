@@ -1,82 +1,98 @@
-import os, random, subprocess, datetime
-from PIL import Image, ImageDraw, ImageFont
+import random, datetime, requests
 import numpy as np
-import wave
+from PIL import Image
+from moviepy import ImageClip, AudioClip, concatenate_videoclips
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
 
-# --- 1. 15 MIN KI AUDIO BANAO (Birds Chirps Jaisi Awaz) ---
-def make_birds_audio(filename="birds_15min.wav", duration=900):
-    sr = 22050
-    total = int(sr * duration)
-    audio = np.zeros(total, dtype=np.float32)
-    # Halki hawa + chirps
-    for _ in range(1200):
-        start = random.randint(0, total-2000)
-        freq = random.randint(2000, 5000)
-        length = random.randint(800, 2500)
-        t = np.arange(length) / sr
-        chirp = np.sin(2*np.pi*freq*t + 5*np.sin(2*np.pi*20*t)) * np.exp(-t*8)
-        end = min(start+length, total)
-        audio[start:end] += chirp[:end-start]*0.4
-    audio = audio / (np.max(np.abs(audio))+0.01) * 0.8
-    audio_int = (audio*32767).astype(np.int16)
-    with wave.open(filename,'wb') as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
-        w.writeframes(audio_int.tobytes())
-    return filename
+# --- 1. TITLE + DESCRIPTION - Roz naya ---
+TITLES = [
+ "8 Hours Relaxing Birds Sounds | Peaceful Forest Morning",
+ "8 Hours Birds Chirping in Forest | Relax, Sleep, Focus",
+ "8 Hours Calm Birds Sounds | Nature for Deep Sleep",
+ "8 Hours Morning Birds Song | Stress Relief & Focus",
+ "8 Hours Forest Birds Sounds | Study, Work, Sleep",
+ "8 Hours Beautiful Birds Chirping | Relaxing Nature",
+ "8 Hours Peaceful Birds Sounds | Calm Your Mind",
+ "8 Hours Birds Sounds in Nature | Sleep & Meditation",
+ "8 Hours Soothing Birds Chirping | Deep Focus",
+ "8 Hours Forest Morning Birds | Relaxing Ambience",
+]
+today = datetime.date.today()
+day_num = today.timetuple().tm_yday
+title = TITLES[day_num % len(TITLES)]
+desc = f"""{title}
 
-# --- 2. PHOTO BANAO ---
-def make_image():
-    img = Image.new('RGB', (1280,720), color=(20,60,40))
-    d = ImageDraw.Draw(img)
-    try:
-        f1 = ImageFont.truetype("DejaVuSans-Bold.ttf", 70)
-        f2 = ImageFont.truetype("DejaVuSans.ttf", 32)
-    except:
-        f1 = f2 = ImageFont.load_default()
-    d.text((80,280), "Birds Sounds Focus", fill=(255,255,255), font=f1)
-    d.text((80,380), "8 Hours Relaxing Birds Sounds | Study, Sleep, Focus", fill=(200,255,200), font=f2)
-    d.text((80,430), f"{datetime.date.today()}  |  Birds Sounds Focus", fill=(180,180,180), font=f2)
-    img.save("bg.jpg")
-    return "bg.jpg"
+Enjoy 8 hours of relaxing mixed birds sounds from a peaceful forest.
+Different birds chirping together with soft forest ambience.
 
-# --- 3. 15 MIN VIDEO BANAO ---
-def make_15min():
-    audio = make_birds_audio()
-    img = make_image()
-    subprocess.run(["ffmpeg","-y","-loop","1","-i",img,"-i",audio,"-c:v","libx264","-t","900","-pix_fmt","yuv420p","-c:a","aac","-shortest","part15.mp4"], check=True)
-    return "part15.mp4"
+Perfect for sleep, study, work, meditation and focus.
 
-# --- 4. 32 BAAR JOR KE 8 GHANTE KARO (Concat - Memory Nahi Lagti) ---
-def make_8hours():
-    part = make_15min()
-    with open("list.txt","w") as f:
-        for i in range(32):
-            f.write(f"file '{part}'\n")
-    subprocess.run(["ffmpeg","-y","-f","concat","-safe","0","-i","list.txt","-c","copy","final_8hours.mp4"], check=True)
-    return "final_8hours.mp4"
+Subscribe for daily relaxing nature sounds.
 
-# --- 5. YOUTUBE UPLOAD ---
-def upload_youtube(video_file):
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
-    creds = Credentials(None,
-        refresh_token=os.environ.get("YOUTUBE_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ.get("YOUTUBE_CLIENT_ID"),
-        client_secret=os.environ.get("YOUTUBE_CLIENT_SECRET"))
-    youtube = build("youtube","v3", credentials=creds)
-    today = datetime.date.today().strftime("%d %B %Y")
-    title = f"8 Hours Birds Sounds Focus | Relaxing Birds Chirping for Study, Sleep & Focus | {today}"
-    desc = "8 hours relaxing birds sounds for study, sleep, focus and meditation. Birds Sounds Focus channel.\n\n#birdssounds #focus #sleep #study #relaxing"
-    req = youtube.videos().insert(part="snippet,status",
-        body={"snippet":{"title":title,"description":desc,"tags":["birds sounds","focus","sleep","study","relaxing"],"categoryId":"22"},
-        "status":{"privacyStatus":"public","selfDeclaredMadeForKids":False}},
-        media_body=MediaFileUpload(video_file, chunksize=-1, resumable=True))
-    res = req.execute()
-    print("Uploaded:", res.get("id"))
+#birdssounds #relaxing #nature #sleep #focus #birdschirping"""
 
-if __name__ == "__main__":
-    video = make_8hours()
-    print("8 Hours Video Ban Gayi:", video)
-    upload_youtube(video)
+# --- 2. PIC - GitHub khud roz nayi layega ---
+pic_url = f"https://picsum.photos/seed/birds{day_num}/1280/720"
+r = requests.get(pic_url, timeout=30)
+open("bg.jpg","wb").write(r.content)
+img = Image.open("bg.jpg").convert("RGB")
+img.save("bg.jpg")
+
+# --- 3. AWAZAIN MIXED - 3 tarah ki awazain ---
+def make_audio():
+    sr = 44100
+    dur = 15*60
+    t = np.linspace(0, dur, int(sr*dur))
+    y = np.zeros_like(t)
+
+    # A. Choti chidiya - tez chirp
+    for _ in range(90):
+        start = random.uniform(0, dur-2)
+        f0 = random.uniform(3000, 5200)
+        idx = (t>=start)&(t<start+1.5)
+        tt = t[idx]-start
+        y[idx] += np.sin(2*np.pi*(f0*tt + 400*np.sin(2*np.pi*8*tt))) * np.exp(-tt*2) * 0.35
+
+    # B. Bari chidiya - dheemi coo
+    for _ in range(45):
+        start = random.uniform(0, dur-3)
+        f0 = random.uniform(700, 1400)
+        idx = (t>=start)&(t<start+2.5)
+        tt = t[idx]-start
+        y[idx] += np.sin(2*np.pi*f0*tt) * np.exp(-tt*1) * 0.45
+
+    # C. Door wali chidiya - halki
+    for _ in range(60):
+        start = random.uniform(0, dur-2)
+        f0 = random.uniform(1800, 2800)
+        idx = (t>=start)&(t<start+1)
+        tt = t[idx]-start
+        y[idx] += np.sin(2*np.pi*f0*tt) * np.exp(-tt*2.5) * 0.20
+
+    # D. Hawa / jungle background
+    y += np.random.randn(len(t)) * 0.015
+    y += np.sin(2*np.pi*180*t) * 0.015
+
+    y = y / (np.max(np.abs(y))+1e-6) * 0.7
+    return y, sr
+
+audio_data, sr = make_audio()
+def frame(tt):
+    i = int(tt*sr)
+    return [audio_data[min(i, len(audio_data)-1)]]
+audio = AudioClip(frame, duration=15*60, fps=sr)
+
+# --- 4. VIDEO - 15 min ko jor kar 8 ghanta ---
+clip = ImageClip("bg.jpg", duration=15*60).with_audio(audio)
+clip.write_videofile("part.mp4", fps=24, codec="libx264", audio_codec="aac")
+full = concatenate_videoclips([clip]*32)
+full.write_videofile("final_8h.mp4", fps=24, codec="libx264", audio_codec="aac")
+
+# --- 5. UPLOAD - Birds Sounds Focus ---
+creds = Credentials.from_authorized_user_file("token.json", ["https://www.googleapis.com/auth/youtube.upload"])
+yt = build("youtube","v3", credentials=creds)
+req = yt.videos().insert(part={"snippet":{"title":title,"description":desc,"tags":["birds sounds","relaxing","nature"],"categoryId":"10"},"status":{"privacyStatus":"public"}}, media_body=MediaFileUpload("final_8h.mp4", chunksize=-1, resumable=True))
+print(req.execute())
+print("DONE:", title)
