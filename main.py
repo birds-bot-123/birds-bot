@@ -41,30 +41,98 @@ r = requests.get(pic_url, timeout=30)
 open("bg.jpg", "wb").write(r.content)
 print("Photo tayyar!")
 
-# --- 4. SETTING: AUDIO MIX - Bahut saare birds, ek saath ---
+# --- 4. SETTING: AUDIO MIX - FIXED WALA ---
 print("Asli birds ki awaz download ho rahi hai...")
-# Xeno-Canto se asli birds ki awaz - Free, No API Key
 SPECIES = ["Passer domesticus", "Luscinia megarhynchos", "Erithacus rubecula", "Streptopelia decaocto", "Psittacula krameri", "Cuculus canorus", "Fringilla coelebs", "Strix aluco", "Serinus canaria", "Turdus merula", "Parus major", "Carduelis carduelis", "Pica pica", "Corvus corone", "Sturnus vulgaris"]
+
+HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 BirdsBot/1.0"}
+
+def get_recording_for(query):
+    # v2 pehle, phir v3 - jo bhi chale
+    for ver in [2, 3]:
+        try:
+            api = f"https://xeno-canto.org/api/{ver}/recordings?query={query.replace(' ', '+')}"
+            resp = requests.get(api, headers=HEADERS, timeout=30)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            recs = data.get("recordings", [])
+            if recs:
+                return recs
+        except Exception as e:
+            print(f"API v{ver} fail for {query}: {e}")
+            continue
+    return []
 
 bird_files = []
 for i, sp in enumerate(SPECIES):
     try:
-        # Xeno-Canto API se us bird ki 1 recording lo
-        api = f"https://xeno-canto.org/api/2/recordings?query={sp.replace(' ', '+')}"
-        data = requests.get(api, timeout=30).json()
-        if data["recordings"]:
-            file_url = data["recordings"][0]["file"]
-            # file_url //xeno-canto.org/... hota hai, https lagao
-            if file_url.startswith("//"):
-                file_url = "https:" + file_url
-            audio = requests.get(file_url, timeout=60).content
-            open(f"bird_{i}.mp3", "wb").write(audio)
-            bird_files.append(f"bird_{i}.mp3")
-            print(f"Bird {i+1}/15 tayyar: {sp}")
+        recs = []
+        # Try 1: Poora naam - sp:Passer domesticus
+        recs = get_recording_for(f"sp:{sp}")
+        # Try 2: Sirf pehla naam
+        if not recs:
+            recs = get_recording_for(sp.split()[0])
+        # Try 3: Poora naam bina sp:
+        if not recs:
+            recs = get_recording_for(sp)
+
+        if recs:
+            # Pehli 3 me se koi ek jisme file ho, wo lo - pehli wali kharab bhi ho sakti hai
+            got = False
+            for rec in recs[:3]:
+                file_url = rec.get("file") or rec.get("file-name") or ""
+                if not file_url:
+                    continue
+                if file_url.startswith("//"):
+                    file_url = "https:" + file_url
+                audio = requests.get(file_url, headers=HEADERS, timeout=60).content
+                # Khali file ko skip karo - 5KB se choti file kharab hai
+                if len(audio) < 5000:
+                    continue
+                open(f"bird_{i}.mp3", "wb").write(audio)
+                bird_files.append(f"bird_{i}.mp3")
+                print(f"Bird {i+1}/15 tayyar: {sp} - {len(audio)} bytes")
+                got = True
+                break
+            if not got:
+                print(f"Bird {sp} skip - file kharab thi")
+        else:
+            print(f"Bird {sp} skip - recording nahi mili")
     except Exception as e:
         print(f"Bird {sp} miss ho gaya: {e}")
 
+# --- BACKUP: Agar phir bhi kam birds mile to generic birds le aao ---
+if len(bird_files) < 5:
+    print(f"Sirf {len(bird_files)} birds mile, generic birds la raha hun...")
+    try:
+        recs = get_recording_for("bird song")
+        for k, rec in enumerate(recs[:8]):
+            try:
+                file_url = rec.get("file") or rec.get("file-name") or ""
+                if not file_url:
+                    continue
+                if file_url.startswith("//"):
+                    file_url = "https:" + file_url
+                audio = requests.get(file_url, headers=HEADERS, timeout=60).content
+                if len(audio) < 5000:
+                    continue
+                fn = f"bird_backup_{k}.mp3"
+                open(fn, "wb").write(audio)
+                bird_files.append(fn)
+                print(f"Backup Bird {k+1} tayyar")
+                if len(bird_files) >= 8:
+                    break
+            except:
+                continue
+    except Exception as e:
+        print(f"Backup fail: {e}")
+
 print(f"Total {len(bird_files)} birds mil gaye, ab MIX ban raha hai...")
+
+if len(bird_files) == 0:
+    print("ERROR: Koi bird nahi mila, Xeno-Canto down hai. Dobara try karo.")
+    exit(1)
 
 # Har ghante ka alag MIX - 8 ghante = 8 alag MIX
 hour_files = []
@@ -74,8 +142,6 @@ for hour in range(8):
     chosen = rng.sample(bird_files, min(5, len(bird_files)))
     print(f"Ghanta {hour+1}/8 Mix: {chosen}")
     
-    # FFmpeg: 5 birds ko EK SAATH milao, alag-alag volume ke saath
-    # Ek tez (0.8), baqi halke (0.4, 0.3, 0.3, 0.2) - jaise jungle me hota hai
     volumes = [0.8, 0.4, 0.35, 0.3, 0.25]
     inputs = []
     filters = []
@@ -89,7 +155,6 @@ for hour in range(8):
     subprocess.run(cmd_mix, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     hour_files.append(f"hour_{hour}.m4a")
 
-# 8 ghante ke MIX ko joro - yahan jor nahi pakra jayega kyunki har ghante me alag birds hain + crossfade jaisa feel hai
 with open("concat.txt", "w") as f:
     for hf in hour_files:
         f.write(f"file '{hf}'\n")
