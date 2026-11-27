@@ -1,32 +1,32 @@
-name: Upload Long Videos
+name: Daily Birds Video
+
 on:
   schedule:
-    - cron: '0 15 * * *'
-    - cron: '30 15 * * *'
+    - cron: '0 0 * * *'    # Subah 5:00 baje Pakistan
+    - cron: '30 0 * * *'   # Subah 5:30 baje Pakistan - Backup
   workflow_dispatch:
-permissions:
-  contents: write
+
 jobs:
-  upload:
+  make-video:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: pip install -r requirements.txt
-      - run: python main.py
-        env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-      - name: Commit and push state
+          python-version: '3.10'
+      - name: Install FFmpeg + Libraries
         run: |
-          git config --global user.email "bot@example.com"
-          git config --global user.name "bot"
-          git add state.json || true
-          git commit -m "Update state" || true
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install requests google-api-python-client google-auth-oauthlib
+      - name: Restore Token
+        run: echo '${{ secrets.TOKEN_JSON }}' > token.json
+      - name: Run Main
+        run: python main.py
+      - name: Save State
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
+          git add state.json
+          git commit -m "update state" || true
           git push || true
