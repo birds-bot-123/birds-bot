@@ -65,15 +65,17 @@ def make_unique_audio(dur, seed_offset):
         chirps.append((random.uniform(0, 60), random.uniform(0.5, 2.0), random.randint(1500, 5200)))
 
     def make_frame(t):
-        # t har baar chhota sa tukda hai, poora 1 ghanta memory me nahi aata
-        y = np.random.normal(0, 0.02, len(t))
-        tt = np.mod(t, 60)  # 60 sec ka loop
+        # MoviePy kabhi 1 number bhejta hai, kabhi poori list - dono handle karo
+        is_single = np.isscalar(t) or np.ndim(t) == 0
+        t_arr = np.atleast_1d(np.asarray(t, dtype=float))
+        y = np.random.normal(0, 0.02, len(t_arr))
+        tt = np.mod(t_arr, 60)  # 60 sec ka loop
         for start, length, freq in chirps:
             idx = (tt >= start) & (tt < start + length)
             if np.any(idx):
                 t2 = tt[idx] - start
                 y[idx] += 0.35 * np.sin(2 * np.pi * freq * t2) * np.exp(-t2 * 2)
-        return y
+        return y[0] if is_single else y
 
     return AudioClip(make_frame, duration=dur, fps=22050)
 
