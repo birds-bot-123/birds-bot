@@ -19,8 +19,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install requests google-api-python-client google-auth-oauthlib
-      - name: Restore Token
-        run: echo '${{ secrets.TOKEN_JSON }}' > token.json
+      - name: Create token.json from Secrets
+        run: |
+          echo '{"token":"","refresh_token":"${{ secrets.YOUTUBE_REFRESH_TOKEN }}","token_uri":"https://oauth2.googleapis.com/token","client_id":"${{ secrets.YOUTUBE_CLIENT_ID }}","client_secret":"${{ secrets.YOUTUBE_CLIENT_SECRET }}","scopes":["https://www.googleapis.com/auth/youtube.upload"],"expiry":"2026-01-01T00:00:00Z"}' > token.json
       - name: Run Main
         run: python main.py
       - name: Save State
