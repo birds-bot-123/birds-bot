@@ -1,15 +1,10 @@
-import random, datetime, requests, os, json
-import numpy as np
-from PIL import Image
-from moviepy import ImageClip, AudioClip, concatenate_videoclips
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google.oauth2.credentials import Credentials
+import random, datetime, requests, os, json, subprocess
 
 today = datetime.date.today()
 today_str = str(today)
+day_num = today.timetuple().tm_yday
 
-# --- CHECK: Aaj ki video pehle se ban gayi? (8:30 Backup ke liye) ---
+# --- 1. SETTING: Dobara na bane (5:30 backup ke liye) ---
 try:
     with open("state.json") as f:
         state = json.load(f)
@@ -19,19 +14,14 @@ try:
 except:
     state = {}
 
-# --- 1. DAILY UNIQUE SEED - Roz alag, 1 saal tak repeat nahi ---
-day_num = today.timetuple().tm_yday
-random.seed(today_str)
-np.random.seed(day_num)
-
-# --- 2. UNIQUE TITLES ---
+# --- 2. SETTING: Title / Description - Har din naya ---
 BIRDS = ["Forest Birds", "Morning Sparrow", "Nightingale", "Canary", "Robin", "Dove", "Parrot", "Cuckoo", "Owl", "Finch"]
 MOODS = ["Relaxing", "Calming", "Peaceful", "Soothing", "Healing", "Meditation", "Deep Sleep", "Focus", "Study", "Nature"]
 PLACES = ["Peaceful Forest", "Quiet Garden", "Green Valley", "Morning Woods", "Hidden Lake", "Mountain Forest", "Country Meadow"]
 
-bird = BIRDS[day_num % len(BIRDS)]
-mood = MOODS[day_num % len(MOODS)]
-place = PLACES[day_num % len(PLACES)]
+bird = BIRDS[(day_num * 3 + 1) % len(BIRDS)]
+mood = MOODS[(day_num * 7 + 2) % len(MOODS)]
+place = PLACES[(day_num * 5 + 3) % len(PLACES)]
 
 title = f"8 Hours {bird} {mood} Sounds in {place} | Day {day_num} | Relax, Sleep, Study"
 desc = f"""Enjoy 8 hours of {mood.lower()} {bird.lower()} sounds from a {place.lower()}.
@@ -44,55 +34,87 @@ Subscribe for daily relaxing nature sounds.
 
 #BirdSounds #Relaxing #Nature #Sleep #Focus #BirdChirping #Day{day_num}"""
 
-# --- 3. ALAG-ALAG PICTURES - 8 hisse, 8 alag pictures ---
-print("Pictures download ho rahi hain...")
-images = []
-for i in range(8):
-    pic_url = f"https://picsum.photos/seed/birds{day_num}_{i}/1280/720"
-    r = requests.get(pic_url, timeout=30)
-    open(f"bg_{i}.jpg", "wb").write(r.content)
-    img = Image.open(f"bg_{i}.jpg").convert("RGB")
-    img.save(f"bg_{i}.jpg")
-    images.append(f"bg_{i}.jpg")
+# --- 3. SETTING: Photo - Sirf 1, har din nayi ---
+print("Photo download ho rahi hai...")
+pic_url = f"https://picsum.photos/seed/birds{day_num}_{today_str}/1280/720"
+r = requests.get(pic_url, timeout=30)
+open("bg.jpg", "wb").write(r.content)
+print("Photo tayyar!")
 
-# --- 4. NO-LOOP AUDIO - Tukde tukde me banega, memory nahi bharega ---
-def make_unique_audio(dur, seed_offset):
-    random.seed(f"{today_str}-{seed_offset}")
-    np.random.seed(int(today_str.replace('-', '')) + seed_offset)
-    # Pehle se 60 sec ke chirps fix kar lo, phir usi ko repeat karenge
-    chirps = []
-    for _ in range(25):
-        chirps.append((random.uniform(0, 60), random.uniform(0.5, 2.0), random.randint(1500, 5200)))
+# --- 4. SETTING: AUDIO MIX - Bahut saare birds, ek saath ---
+print("Asli birds ki awaz download ho rahi hai...")
+# Xeno-Canto se asli birds ki awaz - Free, No API Key
+SPECIES = ["Passer domesticus", "Luscinia megarhynchos", "Erithacus rubecula", "Streptopelia decaocto", "Psittacula krameri", "Cuculus canorus", "Fringilla coelebs", "Strix aluco", "Serinus canaria", "Turdus merula", "Parus major", "Carduelis carduelis", "Pica pica", "Corvus corone", "Sturnus vulgaris"]
 
-    def make_frame(t):
-        # MoviePy kabhi 1 number bhejta hai, kabhi poori list - dono handle karo
-        is_single = np.isscalar(t) or np.ndim(t) == 0
-        t_arr = np.atleast_1d(np.asarray(t, dtype=float))
-        y = np.random.normal(0, 0.02, len(t_arr))
-        tt = np.mod(t_arr, 60)  # 60 sec ka loop
-        for start, length, freq in chirps:
-            idx = (tt >= start) & (tt < start + length)
-            if np.any(idx):
-                t2 = tt[idx] - start
-                y[idx] += 0.35 * np.sin(2 * np.pi * freq * t2) * np.exp(-t2 * 2)
-        return y[0] if is_single else y
+bird_files = []
+for i, sp in enumerate(SPECIES):
+    try:
+        # Xeno-Canto API se us bird ki 1 recording lo
+        api = f"https://xeno-canto.org/api/2/recordings?query={sp.replace(' ', '+')}"
+        data = requests.get(api, timeout=30).json()
+        if data["recordings"]:
+            file_url = data["recordings"][0]["file"]
+            # file_url //xeno-canto.org/... hota hai, https lagao
+            if file_url.startswith("//"):
+                file_url = "https:" + file_url
+            audio = requests.get(file_url, timeout=60).content
+            open(f"bird_{i}.mp3", "wb").write(audio)
+            bird_files.append(f"bird_{i}.mp3")
+            print(f"Bird {i+1}/15 tayyar: {sp}")
+    except Exception as e:
+        print(f"Bird {sp} miss ho gaya: {e}")
 
-    return AudioClip(make_frame, duration=dur, fps=22050)
+print(f"Total {len(bird_files)} birds mil gaye, ab MIX ban raha hai...")
 
-print("Video ban rahi hai - 8 alag hisse, NO LOOP...")
-clips = []
-for i in range(8):
-    random.seed(f"{today_str}-{i}")
-    audio = make_unique_audio(3600, i)
-    clip = ImageClip(images[i], duration=3600).with_audio(audio)
-    clips.append(clip)
-    print(f"Hissa {i+1}/8 tayyar")
+# Har ghante ka alag MIX - 8 ghante = 8 alag MIX
+hour_files = []
+for hour in range(8):
+    rng = random.Random(f"{today_str}-hour-{hour}")
+    # Har ghante me 5 alag birds chun lo
+    chosen = rng.sample(bird_files, min(5, len(bird_files)))
+    print(f"Ghanta {hour+1}/8 Mix: {chosen}")
+    
+    # FFmpeg: 5 birds ko EK SAATH milao, alag-alag volume ke saath
+    # Ek tez (0.8), baqi halke (0.4, 0.3, 0.3, 0.2) - jaise jungle me hota hai
+    volumes = [0.8, 0.4, 0.35, 0.3, 0.25]
+    inputs = []
+    filters = []
+    for j, bf in enumerate(chosen):
+        inputs.extend(["-stream_loop", "-1", "-i", bf])
+        filters.append(f"[{j}:a]volume={volumes[j]}[a{j}]")
+    
+    filter_complex = ";".join(filters) + f";{''.join([f'[a{j}]' for j in range(len(chosen))])}amix=inputs={len(chosen)}:duration=longest:dropout_transition=0[aout]"
+    
+    cmd_mix = ["ffmpeg", "-y"] + inputs + ["-filter_complex", filter_complex, "-map", "[aout]", "-t", "3600", "-c:a", "aac", "-b:a", "128k", f"hour_{hour}.m4a"]
+    subprocess.run(cmd_mix, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    hour_files.append(f"hour_{hour}.m4a")
 
-final = concatenate_videoclips(clips, method="compose")
-final.write_videofile("final_video.mp4", fps=12, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4, logger=None)
+# 8 ghante ke MIX ko joro - yahan jor nahi pakra jayega kyunki har ghante me alag birds hain + crossfade jaisa feel hai
+with open("concat.txt", "w") as f:
+    for hf in hour_files:
+        f.write(f"file '{hf}'\n")
+subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", "full_8h.m4a"], check=True)
+print("8 ghante ka MIX tayyar!")
+
+# --- 5. SETTING: Video - FFmpeg, 1 Photo + 8 Ghante Audio ---
+print("Video ban rahi hai...")
+cmd_video = [
+    "ffmpeg", "-y",
+    "-loop", "1", "-i", "bg.jpg",
+    "-i", "full_8h.m4a",
+    "-t", "28800",
+    "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+    "-c:a", "copy", "-shortest",
+    "final_video.mp4"
+]
+subprocess.run(cmd_video, check=True)
 print("Video tayyar!")
 
-# --- 5. YOUTUBE UPLOAD ---
+# --- 6. SETTING: YouTube Upload ---
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
+
 creds = Credentials.from_authorized_user_file("token.json", ["https://www.googleapis.com/auth/youtube.upload"])
 youtube = build("youtube", "v3", credentials=creds)
 request = youtube.videos().insert(
@@ -103,6 +125,5 @@ request = youtube.videos().insert(
 request.execute()
 print("Upload ho gaya!")
 
-# State save karo taake 8:30 wala dobara na chalaye
 with open("state.json", "w") as f:
     json.dump({"last_date": today_str}, f)
