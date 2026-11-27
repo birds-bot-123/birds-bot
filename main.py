@@ -1,4 +1,3 @@
-
 import random, datetime, requests, os, json, subprocess
 
 today = datetime.date.today()
@@ -42,9 +41,8 @@ r = requests.get(pic_url, timeout=30)
 open("bg.jpg", "wb").write(r.content)
 print("Photo tayyar!")
 
-# --- 4. SETTING: AUDIO MIX - GITHUB KHUD BANAYEGA, KUCH DOWNLOAD NAHI ---
+# --- 4. SETTING: AUDIO MIX - GITHUB KHUD BANAYEGA ---
 print("GitHub khud birds ki awaz bana raha hai...")
-
 import wave, math, random
 
 def make_chirp_file(filename, seed):
@@ -87,23 +85,18 @@ for i in range(15):
 
 print(f"Total {len(bird_files)} birds mil gaye, ab MIX ban raha hai...")
 
-# Har ghante ka alag MIX - 8 ghante = 8 alag MIX
 hour_files = []
 for hour in range(8):
     rng = random.Random(f"{today_str}-hour-{hour}")
-    # Har ghante me 5 alag birds chun lo
     chosen = rng.sample(bird_files, min(5, len(bird_files)))
     print(f"Ghanta {hour+1}/8 Mix: {chosen}")
-    
     volumes = [0.8, 0.4, 0.35, 0.3, 0.25]
     inputs = []
     filters = []
     for j, bf in enumerate(chosen):
         inputs.extend(["-stream_loop", "-1", "-i", bf])
         filters.append(f"[{j}:a]volume={volumes[j]}[a{j}]")
-    
     filter_complex = ";".join(filters) + f";{''.join([f'[a{j}]' for j in range(len(chosen))])}amix=inputs={len(chosen)}:duration=longest:dropout_transition=0[aout]"
-    
     cmd_mix = ["ffmpeg", "-y"] + inputs + ["-filter_complex", filter_complex, "-map", "[aout]", "-t", "3600", "-c:a", "aac", "-b:a", "128k", f"hour_{hour}.m4a"]
     subprocess.run(cmd_mix, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     hour_files.append(f"hour_{hour}.m4a")
@@ -114,15 +107,18 @@ with open("concat.txt", "w") as f:
 subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", "full_8h.m4a"], check=True)
 print("8 ghante ka MIX tayyar!")
 
-# --- 5. SETTING: Video - FFmpeg, 1 Photo + 8 Ghante Audio ---
+# --- 5. SETTING: Video - FIXED HALKA WALA ---
 print("Video ban rahi hai...")
 cmd_video = [
     "ffmpeg", "-y",
-    "-loop", "1", "-i", "bg.jpg",
+    "-loop", "1", "-framerate", "1", "-i", "bg.jpg",
     "-i", "full_8h.m4a",
+    "-map", "0:v", "-map", "1:a",
+    "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "28",
+    "-r", "1", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k",
     "-t", "28800",
-    "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
-    "-c:a", "copy", "-shortest",
+    "-movflags", "+faststart",
     "final_video.mp4"
 ]
 subprocess.run(cmd_video, check=True)
