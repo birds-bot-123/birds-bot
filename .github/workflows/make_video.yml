@@ -1,0 +1,26 @@
+name: Surah Fatiha Video Banayo
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python Setup Karo
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Zaroori Cheezein Install Karo
+        run: |
+          pip install Pillow moviepy
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto
+      - name: Video Ke Frames Banayo
+        run: python make_video.py
+      - name: Frames Se Video Banayo
+        run: |
+          ffmpeg -framerate 1/10 -i frames/frame_%d.png -c:v libx264 -pix_fmt yuv420p fatiha_video.mp4
+      - name: Video Save Karo
+        uses: actions/upload-artifact@v4
+        with:
+          name: fatiha-video
+          path: fatiha_video.mp4
