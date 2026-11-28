@@ -6,21 +6,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Python Setup Karo
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Zaroori Cheezein Install Karo
+      - run: pip install Pillow gtts
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python make_video.py
+      - name: Banayo Long Video with Audio
         run: |
-          pip install Pillow moviepy
-          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto
-      - name: Video Ke Frames Banayo
-        run: python make_video.py
-      - name: Frames Se Video Banayo
-        run: |
-          ffmpeg -framerate 1/10 -i frames/frame_%d.png -c:v libx264 -pix_fmt yuv420p fatiha_video.mp4
-      - name: Video Save Karo
-        uses: actions/upload-artifact@v4
+          # Intro 30 sec
+          ffmpeg -y -loop 1 -i frames/frame_001_intro.png -i audio/audio_00_intro.mp3 -c:v libx264 -t 30 -pix_fmt yuv420p -c:a aac -shortest intro.mp4
+          # Har Ayat 60 sec tak (Audio slow hai, is liye lambi hogi)
+          for i in 1 2 3 4 5 6 7; do
+            n=$(printf "%02d" $i)
+            ffmpeg -y -loop 1 -i frames/frame_${n}.png -i audio/audio_${n}.mp3 -c:v libx264 -t 60 -pix_fmt yuv420p -c:a aac -shortest part${n}.mp4
+          done
+          ffmpeg -y -loop 1 -i frames/frame_99_outro.png -i audio/audio_99_outro.mp3 -c:v libx264 -t 30 -pix_fmt yuv420p -c:a aac -shortest outro.mp4
+          # Sab joro
+          echo "file 'intro.mp4'" > list.txt
+          for i in 01 02 03 04 05 06 07; do echo "file 'part${i}.mp4'" >> list.txt; done
+          echo "file 'outro.mp4'" >> list.txt
+          ffmpeg -y -f concat -safe 0 -i list.txt -c copy fatiha_video.mp4
+          ls -lh fatiha_video.mp4
+      - uses: actions/upload-artifact@v4
         with:
           name: fatiha-video
           path: fatiha_video.mp4
